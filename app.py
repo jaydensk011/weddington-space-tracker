@@ -20,10 +20,10 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.title("Weddington Night Sky Tracker")
+st.title("Weddington Space Tracker")
 st.markdown("""
-Welcome to the Weddington Astronomy Tool! This app uses real-time coordinate math to query 
-**NASA's JPL Horizons system** for the exact positions of celestial bodies relative to Union County, NC.
+Welcome to the Weddington Space Tracker! This app uses real-time coordinate math to query 
+**NASA's JPL Horizons system** for the exact data of celestial bodies relative to Weddington, NC.
 """)
 
 # 2. Define Aliases
@@ -41,13 +41,23 @@ lat = 35.03
 lon = -80.72
 
 # User picks the celestial body from a dropdown menu
-target_name = st.sidebar.selectbox("Choose a celestial object:", list(ALIASES.keys()))
+target_name = st.sidebar.selectbox(
+    "Choose a celestial object:",
+    list(ALIASES.keys())
+)
 obj_id = ALIASES[target_name]
+
+show_million_miles = st.sidebar.checkbox(
+    "Display distances in miles",
+    value=False
+)
+
+
 
 # Fetch current UTC time automatically
 current_ut = Time.now()
 @st.fragment(run_every="60s")
-def render_live_dashboard(target_id, name):
+def render_live_dashboard():
     # Fetch current UTC time automatically *inside* the fragment so it updates
     current_ut = Time.now()
     # 4. Fetch NASA Data
@@ -66,31 +76,37 @@ def render_live_dashboard(target_id, name):
         phaseang = float(eph['alpha'])
         ang_width = float(eph['ang_width'])
 
-
         # 5. Build the Interactive Dashboard
         st.header(f"Real-Time Data for {obj_real_name}")
-        st.caption(f"Data accurate as of: {current_ut.iso} UTC")
+        st.caption(f"Last Updated: {current_ut.iso} UTC")
 
             # Visual Anchor: Visibility Status Card
         if el > 0:
             st.success(f"**Visible Right Now!** It is {el:.2f}° above the horizon.")
         else:
-            st.error(f"**Not Visible.** It is currently below the horizon ({el:.2f}°).")
+            st.error(f"**Not Visible.** It is currently {abs(el):.2f}° below the horizon.")
 
             # Display Metrics cleanly in columns
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric(label="Distance from Earth (AU)", value=f"{dist_earth:.2f} AU")
-            st.metric(label="Distance from Sun (AU)", value=f"{dist_sun:.2f} AU")
+            if show_million_miles:
+                dist_sunmi = dist_sun * 92955807.3 / 1_000_000
+                dist_earthmi = dist_earth * 92955807.3 / 1_000_000
+                st.metric(label="Distance from Earth", value=f"{dist_earthmi:.1f} M miles")
+                st.metric(label="Distance from Sun", value=f"{dist_sunmi:.1f} M miles")
+            else:
+                st.metric(label="Distance from Earth (AU)", value=f"{dist_earth:.2f} AU")
+                st.metric(label="Distance from Sun (AU)", value=f"{dist_sun:.2f} AU")
         with col2:
-            st.metric(label="Apparent Magnitude (Brightness)", value=f"{vmag:.2f}")
+            st.metric(label="Apparent Magnitude", value=f"{vmag:.2f}")
             st.metric(label="Illumination", value=f"{illumination:.1f}%")
         with col3:
             st.metric(label= "Angular Width", value=f"{ang_width:.2f}\"")
             st.metric(label="Phase Angle", value=f"{phaseang:.2f}")
-        st.caption("v1.0.2", False, text_alignment="right")
-    except Exception:
-            st.error("Could not fetch data from NASA JPL. Check your internet connection or object ID.")
         
-render_live_dashboard(obj_id, target_name)
+        st.caption("v1.0.3", False, text_alignment="right")
+    except Exception:
+            st.error("Could not fetch data from NASA JPL. Check your internet connection.")
+        
+render_live_dashboard()
 
