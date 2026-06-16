@@ -52,11 +52,9 @@ show_million_miles = st.sidebar.checkbox(
     value=False
 )
 
-
-
 # Fetch current UTC time automatically
 current_ut = Time.now()
-@st.fragment(run_every="60s")
+@st.fragment(run_every="15s")
 def render_live_dashboard():
     # Fetch current UTC time automatically *inside* the fragment so it updates
     current_ut = Time.now()
@@ -66,7 +64,7 @@ def render_live_dashboard():
         # Extract data rows
         eph = obj.ephemerides()
         obj_real_name = target_name
-            
+
             # Extract specific values
         el = float(eph['EL'])
         vmag = float(eph['V'])
@@ -105,6 +103,14 @@ def render_live_dashboard():
             st.metric(label="Phase Angle", value=f"{phaseang:.2f}")
         
         st.caption("v1.0.3", False, text_alignment="right")
+        st.markdown("""
+        <style>
+        .block-container {
+            padding-top: 1rem;
+            padding-bottom: 0rem;
+        }
+        </style>
+        """, unsafe_allow_html=True)
     except Exception:
             st.error("Could not fetch data from NASA JPL. Check your internet connection.")
         
