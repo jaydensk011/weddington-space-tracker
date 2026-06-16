@@ -46,47 +46,51 @@ obj_id = ALIASES[target_name]
 
 # Fetch current UTC time automatically
 current_ut = Time.now()
+@st.fragment(run_every="60s")
+def render_live_dashboard(target_id, name):
+    # Fetch current UTC time automatically *inside* the fragment so it updates
+    current_ut = Time.now()
+    # 4. Fetch NASA Data
+    try:
+        obj = Horizons(id=obj_id, location={'lon': lon, 'lat': lat, 'elevation': 0}, epochs={current_ut.iso})
+        # Extract data rows
+        eph = obj.ephemerides()
+        obj_real_name = target_name
+            
+            # Extract specific values
+        el = float(eph['EL'])
+        vmag = float(eph['V'])
+        dist_sun = float(eph['r'])
+        dist_earth = float(eph['delta'])
+        illumination = float(eph['illumination'])
+        phaseang = float(eph['alpha'])
+        ang_width = float(eph['ang_width'])
 
-# 4. Fetch NASA Data
-try:
-    obj = Horizons(id=obj_id, location={'lon': lon, 'lat': lat, 'elevation': 0}, epochs={current_ut.iso})
-    
-    # Extract data rows
-    eph = obj.ephemerides()
-    obj_real_name = target_name
-    
-    # Extract specific values
-    el = float(eph['EL'])
-    vmag = float(eph['V'])
-    dist_sun = float(eph['r'])
-    dist_earth = float(eph['delta'])
-    illumination = float(eph['illumination'])
-    phaseang = float(eph['alpha'])
-    ang_width = float(eph['ang_width'])
 
+        # 5. Build the Interactive Dashboard
+        st.header(f"Real-Time Data for {obj_real_name}")
+        st.caption(f"Data accurate as of: {current_ut.iso} UTC")
 
-    # 5. Build the Interactive Dashboard
-    st.header(f"Real-Time Data for {obj_real_name}")
-    st.caption(f"Data accurate as of: {current_ut.iso} UTC")
+            # Visual Anchor: Visibility Status Card
+        if el > 0:
+            st.success(f"**Visible Right Now!** It is {el:.2f}° above the horizon.")
+        else:
+            st.error(f"**Not Visible.** It is currently below the horizon ({el:.2f}°).")
 
-    # Visual Anchor: Visibility Status Card
-    if el > 0:
-        st.success(f"**Visible Right Now!** It is {el:.2f}° above the horizon.")
-    else:
-        st.error(f"**Not Visible.** It is currently below the horizon ({el:.2f}°).")
-
-    # Display Metrics cleanly in columns
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric(label="Distance from Earth (AU)", value=f"{dist_earth:.2f} AU")
-        st.metric(label="Distance from Sun (AU)", value=f"{dist_sun:.2f} AU")
-    with col2:
-        st.metric(label="Apparent Magnitude (Brightness)", value=f"{vmag:.2f}")
-        st.metric(label="Illumination", value=f"{illumination:.1f}%")
-    with col3:
-        st.metric(label= "Angular Width", value=f"{ang_width:.2f}\"")
-        st.metric(label="Phase Angle", value=f"{phaseang:.2f}")
-    st.caption("v1.0.1", False, text_alignment="right")
-except Exception:
-    st.error("Could not fetch data from NASA JPL. Check your internet connection or object ID.")
+            # Display Metrics cleanly in columns
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(label="Distance from Earth (AU)", value=f"{dist_earth:.2f} AU")
+            st.metric(label="Distance from Sun (AU)", value=f"{dist_sun:.2f} AU")
+        with col2:
+            st.metric(label="Apparent Magnitude (Brightness)", value=f"{vmag:.2f}")
+            st.metric(label="Illumination", value=f"{illumination:.1f}%")
+        with col3:
+            st.metric(label= "Angular Width", value=f"{ang_width:.2f}\"")
+            st.metric(label="Phase Angle", value=f"{phaseang:.2f}")
+        st.caption("v1.0.2", False, text_alignment="right")
+    except Exception:
+            st.error("Could not fetch data from NASA JPL. Check your internet connection or object ID.")
+        
+render_live_dashboard(obj_id, target_name)
 
