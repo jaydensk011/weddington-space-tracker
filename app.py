@@ -8,7 +8,7 @@ mylat = 35.03
 mylong = -80.72
 
 
-st.set_page_config(page_title="Weddington Space Tracker")
+st.set_page_config(page_title="Weddington Space Tracker", page_icon=":material/planet:" )
 st.markdown(
     """
     <style>
