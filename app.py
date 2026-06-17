@@ -27,7 +27,7 @@ st.markdown(
 st.title("Weddington Space Tracker")
 st.markdown("""
 Welcome to the Space Tracker! This app uses real-time coordinate math to query 
-**NASA's JPL Horizons system** for the exact data of celestial bodies relative to your exact location.
+**NASA's JPL Horizons system** for the exact data of celestial bodies relative to your exact location (Location is Weddington, NC by default).
 """)
 
 # 2. Define Aliases
