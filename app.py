@@ -2,9 +2,16 @@ import streamlit as st
 from astroquery.jplhorizons import Horizons
 from astropy.time import Time
 import astropy.units as u
+import geocoder
 # 1. Setup Page Title and Introduction
-st.set_page_config(page_title="Weddington Space Tracker")
+try:
+    g = geocoder.ip('me')
+    mylong = g.lng
+    mylat = g.lat
+except:
+    st.error("**Error**: Could not fetch location.")
 
+st.set_page_config(page_title="Weddington Space Tracker")
 st.markdown(
     """
     <style>
@@ -22,8 +29,8 @@ st.markdown(
 
 st.title("Weddington Space Tracker")
 st.markdown("""
-Welcome to the Weddington Space Tracker! This app uses real-time coordinate math to query 
-**NASA's JPL Horizons system** for the exact data of celestial bodies relative to Weddington, NC.
+Welcome to the Space Tracker! This app uses real-time coordinate math to query 
+**NASA's JPL Horizons system** for the exact data of celestial bodies relative to your exact location.
 """)
 
 # 2. Define Aliases
@@ -57,7 +64,7 @@ OBJECT_DESCRIPTIONS = {
 
 # 3. Create Sidebar for Controls (Replaces the terminal loops)
 st.sidebar.header(" Observation Settings")
-st.sidebar.write("**Location:** Weddington, NC")
+st.sidebar.write(f"**Location (Lat, Long):** {mylat:.1f}, {mylong:.1f}")
 lat = 35.03
 lon = -80.72
 
@@ -80,7 +87,7 @@ def render_live_dashboard():
     current_ut = Time.now()
     # 4. Fetch NASA Data
     try:
-        obj = Horizons(id=obj_id, location={'lon': lon, 'lat': lat, 'elevation': 0}, epochs={current_ut.iso})
+        obj = Horizons(id=obj_id, location={'lon': mylong, 'lat': mylat, 'elevation': 0}, epochs={current_ut.iso})
         # Extract data rows
         eph = obj.ephemerides()
         obj_real_name = target_name
@@ -124,7 +131,7 @@ def render_live_dashboard():
         
         object_desc = OBJECT_DESCRIPTIONS.get(target_name, "Physical data unavailable.")
         st.markdown(f"**Physical Profile:** {object_desc}")
-        st.caption("v1.1.0", False, text_alignment="right")
+        st.caption("v1.1.1", False, text_alignment="right")
         st.markdown("""
         <style>
         .block-container {
