@@ -4,12 +4,9 @@ from astropy.time import Time
 import astropy.units as u
 import geocoder
 # 1. Setup Page Title and Introduction
-try:
-    g = geocoder.ip('me')
-    mylong = g.lng
-    mylat = g.lat
-except:
-    st.error("**Error**: Could not fetch location.")
+mylat = 35.03
+mylong = -80.72
+
 
 st.set_page_config(page_title="Weddington Space Tracker")
 st.markdown(
@@ -64,9 +61,18 @@ OBJECT_DESCRIPTIONS = {
 
 # 3. Create Sidebar for Controls (Replaces the terminal loops)
 st.sidebar.header(" Observation Settings")
-st.sidebar.write(f"**Location (Lat, Long):** {mylat:.1f}, {mylong:.1f}")
+use_custom_location = st.sidebar.checkbox("Manually override coordinates?", value=False)
+
+if use_custom_location:
+    mylat = st.sidebar.number_input("Latitude", value=35.03, format="%.2f")
+    mylong = st.sidebar.number_input("Longitude", value=-80.72, format="%.2f")
+
+st.sidebar.write(f"**Location (Lat, Long):** {mylat:.2f}, {mylong:.2f}")
 lat = 35.03
 lon = -80.72
+
+st.sidebar.write('')
+st.sidebar.write('')
 
 # User picks the celestial body from a dropdown menu
 target_name = st.sidebar.selectbox(
