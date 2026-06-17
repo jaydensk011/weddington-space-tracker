@@ -34,6 +34,27 @@ ALIASES = {
     "Titan": "606", "Titania": "703", "Oberon": "704", "Triton": "801"
 }
 
+OBJECT_DESCRIPTIONS = {
+    "Sun": "Radius: 432,300 miles, Surface Temperature: 10000°F",
+    "Mercury": "Radius: 1,516 miles, Surface Temperature: 332°F (Day: 800°F / Night: -290°F)",
+    "Venus": "Radius: 3,760 miles, Surface Temperature: 867°F",
+    "Moon": "Radius: 1,079 miles, Surface Temperature: -4°F (Day: 260°F / Night: -280°F)",
+    "Mars": "Radius: 2,106 miles, Surface Temperature: -85°F",
+    "Jupiter": "Radius: 43,441 miles, Surface Temperature: -166°F",
+    "Saturn": "Radius: 36,184 miles, Surface Temperature: -220°F",
+    "Uranus": "Radius: 15,759 miles, Surface Temperature: -320°F",
+    "Neptune": "Radius: 15,299 miles, Surface Temperature: -330°F",
+    "Pluto": "Radius: 738 miles, Surface Temperature: -373°F",
+    "Io": "Radius: 1,131 miles, Surface Temperature: -225°F",
+    "Europa": "Radius: 970 miles, Surface Temperature: -256°F",
+    "Ganymede": "Radius: 1,637 miles, Surface Temperature: -261°F",
+    "Callisto": "Radius: 1,498 miles, Surface Temperature: -218°F",
+    "Titan": "Radius: 1,600 miles, Surface Temperature: -290°F",
+    "Titania": "Radius: 490 miles, Surface Temperature: -333°F",
+    "Oberon": "Radius: 473 miles, Surface Temperature: -333°F",
+    "Triton": "Radius: 841 miles, Surface Temperature: -391°F"
+}
+
 # 3. Create Sidebar for Controls (Replaces the terminal loops)
 st.sidebar.header(" Observation Settings")
 st.sidebar.write("**Location:** Weddington, NC")
@@ -51,7 +72,6 @@ show_million_miles = st.sidebar.checkbox(
     "Display distances in miles",
     value=False
 )
-
 # Fetch current UTC time automatically
 current_ut = Time.now()
 @st.fragment(run_every="15s")
@@ -102,7 +122,9 @@ def render_live_dashboard():
             st.metric(label= "Angular Width", value=f"{ang_width:.2f}\"")
             st.metric(label="Phase Angle", value=f"{phaseang:.2f}")
         
-        st.caption("v1.0.3", False, text_alignment="right")
+        object_desc = OBJECT_DESCRIPTIONS.get(target_name, "Physical data unavailable.")
+        st.markdown(f"**Physical Profile:** {object_desc}")
+        st.caption("v1.1.0", False, text_alignment="right")
         st.markdown("""
         <style>
         .block-container {
@@ -113,6 +135,6 @@ def render_live_dashboard():
         """, unsafe_allow_html=True)
     except Exception:
             st.error("Could not fetch data from NASA JPL. Check your internet connection.")
-        
+
 render_live_dashboard()
 
