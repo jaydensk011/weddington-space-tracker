@@ -3,17 +3,9 @@ from astroquery.jplhorizons import Horizons
 from astropy.time import Time
 import astropy.units as u
 import geocoder
-import streamlit.components.v1 as components
 # 1. Setup Page Title and Introduction
 mylat = 35.03
 mylong = -80.72
-
-components.html(
-    """
-    <meta name="google-site-verification" content="u0CRs7eI9ZjT5avCveqEPK-fExCMldhY6vNldnA1r6A" />
-    """,
-    height=0
-)
 
 
 st.set_page_config(page_title="Weddington Space Tracker", page_icon=":material/planet:" )
@@ -145,7 +137,7 @@ def render_live_dashboard():
         
         object_desc = OBJECT_DESCRIPTIONS.get(target_name, "Physical data unavailable.")
         st.markdown(f"**Physical Profile:** {object_desc}")
-        st.caption("v1.1.2", False, text_alignment="right")
+        st.caption("v1.1.1", False, text_alignment="right")
         st.markdown("""
         <style>
         .block-container {
