@@ -2,7 +2,8 @@ import streamlit as st
 from astroquery.jplhorizons import Horizons
 from astropy.time import Time
 import astropy.units as u
-import geocoder
+import numpy as np
+from datetime import datetime, timedelta
 # 1. Setup Page Title and Introduction
 mylat = 35.03
 mylong = -80.72
@@ -134,10 +135,99 @@ def render_live_dashboard():
         with col3:
             st.metric(label= "Angular Width", value=f"{ang_width:.2f}\"")
             st.metric(label="Phase Angle", value=f"{phaseang:.2f}")
-        
+    
+        if target_name != "Sun":
+            st.markdown("---")
+            st.subheader("Next Opposition Countdown")
+            try:
+                # 1. Ask JPL for a daily table of the object over the next 365 days
+                future_scan = Horizons(
+                    id=obj_id, 
+                    location={'lon': mylong, 'lat': mylat, 'elevation': 0}, 
+                    epochs={
+                        'start': current_ut.iso[:10], 
+                        'stop': (Time.now() + 450*u.day).iso[:10], 
+                        'step': '1d'
+                    }
+                )
+                scan_table = future_scan.ephemerides()
+                    
+                # 2. Extract Phase Angle (alpha). An eclipse happens when phase angle hits ~0
+                earthdistance = list(scan_table['delta'])
+                dates_list = list(scan_table['datetime_str'])
+                    
+                # Find the day where the angle is closest to absolute zero alignment
+                min_angle_index = earthdistance.index(min(earthdistance))
+                raw_julian_date = float(scan_table['datetime_jd'][min_angle_index])
+                # 3. Process the live countdown clock
+                eclipse_date = Time(raw_julian_date, format='jd').to_datetime()
+                time_remaining = eclipse_date - datetime.utcnow()
+                dist_oppau = min(earthdistance)
+                if time_remaining.total_seconds() > 0:
+                    days = time_remaining.days
+                    hours, remainder = divmod(time_remaining.seconds, 3600)
+                    minutes, _ = divmod(remainder, 60)
+                        
+                    clean_display_date = eclipse_date.strftime("%Y-%b-%d")
+
+
+                    # 4. Display the direct metric cards
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Countdown", f"{days}d {hours}h")
+                    c2.metric("Opposition Date", clean_display_date)
+                    if show_million_miles:
+                        dist_oppmi = dist_oppau * 92955807.3 / 1_000_000
+                        c3.metric("Minimum Distance", f"{dist_oppmi:.1f} M miles")
+                    else:
+                        c3.metric("Minimum Distance (AU)", f"{dist_oppau:.2f} AU")
+                    st.caption("An opposition is the point at which the object is closest to the Earth.")
+                else:
+                    st.info("Calculating alignment window...")
+            except Exception as a:
+                    st.warning(f"Unable to stream ephemerides. Error: {a}")
+            
+        if target_name != "Sun":  
+            try:
+                st.markdown("---")
+                st.subheader("Next Conjunction Countdown")
+                # Find the day where the angle is closest to absolute zero alignment
+                max_angle_index = earthdistance.index(max(earthdistance))
+                raw_julian_date = float(scan_table['datetime_jd'][max_angle_index])
+                # 3. Process the live countdown clock
+                eclipse_date = Time(raw_julian_date, format='jd').to_datetime()
+                time_remaining = eclipse_date - datetime.utcnow()
+                dist_conjau = max(earthdistance)
+                if time_remaining.total_seconds() > 0:
+                    days = time_remaining.days
+                    hours, remainder = divmod(time_remaining.seconds, 3600)
+                    minutes, _ = divmod(remainder, 60)
+                        
+                    clean_display_date = eclipse_date.strftime("%Y-%b-%d")
+
+
+                    # 4. Display the direct metric cards
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Countdown", f"{days}d {hours}h")
+                    c2.metric("Conjunction Date", clean_display_date)
+                    if show_million_miles:
+                        dist_conjmi = dist_conjau * 92955807.3 / 1_000_000
+                        c3.metric("Maximum Distance", f"{dist_conjmi:.1f} M miles")
+                    else:
+                        c3.metric("Maximum Distance (AU)", f"{dist_conjau:.2f} AU")
+                    st.caption("A conjunction is the point at which the object is farthest from the Earth.")
+                else:
+                    st.info("Calculating alignment window...")
+                            
+            except Exception as a:
+                st.warning(f"Unable to stream ephemerides. Error: {a}")
+        else:
+            pass
+
+
+
         object_desc = OBJECT_DESCRIPTIONS.get(target_name, "Physical data unavailable.")
         st.markdown(f"**Physical Profile:** {object_desc}")
-        st.caption("v1.1.1", False, text_alignment="right")
+        st.caption("v1.2.0", False, text_alignment="right")
         st.markdown("""
         <style>
         .block-container {
@@ -146,8 +236,8 @@ def render_live_dashboard():
         }
         </style>
         """, unsafe_allow_html=True)
-    except Exception:
-            st.error("Could not fetch data from NASA JPL. Check your internet connection.")
+    except Exception as e:
+            st.error(f"Could not fetch data from NASA JPL. Error detail: {e}")
 
 render_live_dashboard()
 
