@@ -1,15 +1,18 @@
 import streamlit as st
 from astroquery.jplhorizons import Horizons
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 import astropy.units as u
 import numpy as np
-from datetime import datetime, timedelta
+import pandas as pd
+from datetime import datetime, timezone, timedelta
+import plotly.express as px
+import math
 # 1. Setup Page Title and Introduction
 mylat = 35.03
 mylong = -80.72
 
 
-st.set_page_config(page_title="Weddington Space Tracker", page_icon=":material/planet:" )
+st.set_page_config(page_title="Weddington Space Tracker", page_icon="🌌" )
 st.markdown(
     """
     <style>
@@ -35,30 +38,11 @@ Welcome to the Space Tracker! This app uses real-time coordinate math to query
 ALIASES = {
     "Sun": "10", "Mercury": "199", "Venus": "299", "Moon": "301", 
     "Mars": "499", "Jupiter": "599", "Saturn": "699", "Uranus": "799", 
-    "Neptune": "899", "Pluto": "999", "Io": "501", "Europa": "502", "Ganymede": "503", "Callisto": "504",
-    "Titan": "606", "Titania": "703", "Oberon": "704", "Triton": "801"
+    "Neptune": "899", "Io": "501", "Europa": "502", "Ganymede": "503", "Callisto": "504",
+    "Titan": "606", "Titania": "703", "Oberon": "704", "Triton": "801", "Ceres": "1;", "Pluto": "999", "Haumea": "136108",
+    "Makemake": "136472", "Eris": "136199", "Sedna": "90377"
 }
 
-OBJECT_DESCRIPTIONS = {
-    "Sun": "Radius: 432,300 miles, Surface Temperature: 10000°F",
-    "Mercury": "Radius: 1,516 miles, Surface Temperature: 332°F (Day: 800°F / Night: -290°F)",
-    "Venus": "Radius: 3,760 miles, Surface Temperature: 867°F",
-    "Moon": "Radius: 1,079 miles, Surface Temperature: -4°F (Day: 260°F / Night: -280°F)",
-    "Mars": "Radius: 2,106 miles, Surface Temperature: -85°F",
-    "Jupiter": "Radius: 43,441 miles, Surface Temperature: -166°F",
-    "Saturn": "Radius: 36,184 miles, Surface Temperature: -220°F",
-    "Uranus": "Radius: 15,759 miles, Surface Temperature: -320°F",
-    "Neptune": "Radius: 15,299 miles, Surface Temperature: -330°F",
-    "Pluto": "Radius: 738 miles, Surface Temperature: -373°F",
-    "Io": "Radius: 1,131 miles, Surface Temperature: -225°F",
-    "Europa": "Radius: 970 miles, Surface Temperature: -256°F",
-    "Ganymede": "Radius: 1,637 miles, Surface Temperature: -261°F",
-    "Callisto": "Radius: 1,498 miles, Surface Temperature: -218°F",
-    "Titan": "Radius: 1,600 miles, Surface Temperature: -290°F",
-    "Titania": "Radius: 490 miles, Surface Temperature: -333°F",
-    "Oberon": "Radius: 473 miles, Surface Temperature: -333°F",
-    "Triton": "Radius: 841 miles, Surface Temperature: -391°F"
-}
 
 # 3. Create Sidebar for Controls (Replaces the terminal loops)
 st.sidebar.header(" Observation Settings")
@@ -88,6 +72,8 @@ show_million_miles = st.sidebar.checkbox(
 )
 # Fetch current UTC time automatically
 current_ut = Time.now()
+
+
 @st.fragment(run_every="15s")
 def render_live_dashboard():
     # Fetch current UTC time automatically *inside* the fragment so it updates
@@ -106,7 +92,10 @@ def render_live_dashboard():
         dist_earth = float(eph['delta'])
         illumination = float(eph['illumination'])
         phaseang = float(eph['alpha'])
-        ang_width = float(eph['ang_width'])
+        angwidth = float(eph['ang_width'])
+        if math.isnan(angwidth):
+            angwidth = str(angwidth)
+            angwidth = '<0.01'
 
         # 5. Build the Interactive Dashboard
         st.header(f"Real-Time Data for {obj_real_name}")
@@ -133,111 +122,273 @@ def render_live_dashboard():
             st.metric(label="Apparent Magnitude", value=f"{vmag:.2f}")
             st.metric(label="Illumination", value=f"{illumination:.1f}%")
         with col3:
-            st.metric(label= "Angular Width", value=f"{ang_width:.2f}\"")
-            st.metric(label="Phase Angle", value=f"{phaseang:.2f}")
+            if angwidth in ['<0.01']:
+                st.metric(label= "Angular Width", value="N/A")
+            else:
+                st.metric(label= "Angular Width", value=f"{angwidth:.2f}\"")
+            st.metric(label="Phase Angle", value=f"{phaseang:.2f}°")
+    except Exception as a: 
+            st.warning(f"Unable to stream ephemerides. Error: {a}")
+
+
+@st.cache_data(show_spinner = "Calculating...")
+def opposition(show_million_miles, obj_id, target_name):
+    if target_name in ["Sun", "Io", "Europa", "Ganymede", "Callisto", "Titan", "Titania", "Oberon", "Triton", "Moon", "Mercury", "Venus"]:
+        return
+    try:
+        st.markdown("---")
+        scandays = 450
+        start_time = Time.now()
+        stop_time = start_time + scandays * u.day
+        
+        # 1. COARSE SCAN (1-day steps) to find the rough neighborhood safely
+        coarse_scan = Horizons(
+            id=obj_id,
+            location='500',
+            epochs={'start': start_time.iso[:10], 'stop': stop_time.iso[:10], 'step': '1d'}
+        )
+        coarse_table = coarse_scan.ephemerides()
+        
+        # 'alpha' is solar phase angle. For outer planets, opposition minimizes phase angle near 0°.
+        coarse_jd = np.array(coarse_table['datetime_jd'])
+        coarse_elong = np.array(coarse_table['elong'])
+        rough_idx = None
+        for i in range(2, len(coarse_elong) - 2):
+            if coarse_elong[i] > coarse_elong[i-1] and coarse_elong[i] > coarse_elong[i+1]: #looks for local maximum
+                if coarse_elong[i] >= 178.0:
+                    eval_date = Time(float(coarse_jd[i]), format='jd').datetime.replace(tzinfo=timezone.utc)
+                    if (eval_date - datetime.now(timezone.utc)).total_seconds() > 0:
+                        rough_idx = i
+                        break
+        # Fallback to closest distance check if no phase angle dip is caught
+        if rough_idx is None:
+            highest_idx = int(np.argmax(coarse_elong))
+        # Firewall: Only accept it if it is a real opposition near 180°
+            if coarse_elong[highest_idx] >= 130.0:
+                rough_idx = highest_idx
+
+        if rough_idx is not None:
+    # 2. FINE ZOOM: Extract the specific Julian Date found
+            center_jd = float(coarse_jd[rough_idx])
     
-        if target_name != "Sun":
-            st.markdown("---")
-            st.subheader("Next Opposition Countdown")
-            try:
-                # 1. Ask JPL for a daily table of the object over the next 365 days
-                future_scan = Horizons(
-                    id=obj_id, 
-                    location={'lon': mylong, 'lat': mylat, 'elevation': 0}, 
-                    epochs={
-                        'start': current_ut.iso[:10], 
-                        'stop': (Time.now() + 450*u.day).iso[:10], 
-                        'step': '1d'
-                    }
-                )
-                scan_table = future_scan.ephemerides()
-                    
-                # 2. Extract Phase Angle (alpha). An eclipse happens when phase angle hits ~0
-                earthdistance = list(scan_table['delta'])
-                dates_list = list(scan_table['datetime_str'])
-                    
-                # Find the day where the angle is closest to absolute zero alignment
-                min_angle_index = earthdistance.index(min(earthdistance))
-                raw_julian_date = float(scan_table['datetime_jd'][min_angle_index])
-                # 3. Process the live countdown clock
-                eclipse_date = Time(raw_julian_date, format='jd').to_datetime()
-                time_remaining = eclipse_date - datetime.utcnow()
-                dist_oppau = min(earthdistance)
-                if time_remaining.total_seconds() > 0:
-                    days = time_remaining.days
-                    hours, remainder = divmod(time_remaining.seconds, 3600)
-                    minutes, _ = divmod(remainder, 60)
-                        
-                    clean_display_date = eclipse_date.strftime("%Y-%b-%d")
-
-
-                    # 4. Display the direct metric cards
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Countdown", f"{days}d {hours}h")
-                    c2.metric("Opposition Date", clean_display_date)
-                    if show_million_miles:
-                        dist_oppmi = dist_oppau * 92955807.3 / 1_000_000
-                        c3.metric("Minimum Distance", f"{dist_oppmi:.1f} M miles")
-                    else:
-                        c3.metric("Minimum Distance (AU)", f"{dist_oppau:.2f} AU")
-                    st.caption("An opposition is the point at which the object is closest to the Earth.")
-                else:
-                    st.info("Calculating alignment window...")
-            except Exception as a:
-                    st.warning(f"Unable to stream ephemerides. Error: {a}")
+    # Create a high-density 48-hour window surrounding that day
+            fine_start = Time(center_jd - 1.0, format='jd')
+            fine_stop = Time(center_jd + 1.0, format='jd')
             
-        if target_name != "Sun":  
-            try:
-                st.markdown("---")
-                st.subheader("Next Conjunction Countdown")
-                # Find the day where the angle is closest to absolute zero alignment
-                max_angle_index = earthdistance.index(max(earthdistance))
-                raw_julian_date = float(scan_table['datetime_jd'][max_angle_index])
-                # 3. Process the live countdown clock
-                eclipse_date = Time(raw_julian_date, format='jd').to_datetime()
-                time_remaining = eclipse_date - datetime.utcnow()
-                dist_conjau = max(earthdistance)
-                if time_remaining.total_seconds() > 0:
-                    days = time_remaining.days
-                    hours, remainder = divmod(time_remaining.seconds, 3600)
-                    minutes, _ = divmod(remainder, 60)
-                        
-                    clean_display_date = eclipse_date.strftime("%Y-%b-%d")
-
-
-                    # 4. Display the direct metric cards
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Countdown", f"{days}d {hours}h")
-                    c2.metric("Conjunction Date", clean_display_date)
+        # Rescan using 10-minute steps ('10m') for precise time resolution
+            fine_scan = Horizons(
+                id=obj_id, 
+                location='500',
+                epochs={'start': fine_start.iso, 'stop': fine_stop.iso, 'step': '10m'})
+            
+            fine_table = fine_scan.ephemerides()
+            
+            fine_elong = np.array(fine_table['elong'])
+            fine_jd = np.array(fine_table['datetime_jd'])
+            fine_delta = np.array(fine_table['delta'])
+            exact_idx = int(np.argmax(fine_elong))
+            
+            # Extract high-accuracy parameters from the mathematical center
+            precise_julian_date = float(fine_jd[exact_idx])
+            exact_date = Time(precise_julian_date, format='jd').datetime.replace(tzinfo=timezone.utc)
+            
+            # Now convert the final precise timestamp directly to your local time zone
+            local_date = exact_date.astimezone()
+            
+            # Verify the final localized date is in the future before rendering
+            if (local_date - datetime.now(local_date.tzinfo)).total_seconds() > 0:
+                clean_display_date = local_date.strftime("%Y-%b-%d")
+                bestdistanceopp = fine_delta[exact_idx]
+                
+                st.header("Next Opposition")
+                
+                # Streamlit Layout Rendering
+                cm1, cm2, cm3 = st.columns(3)
+                with cm1:
+                    st.metric("Opposition Date", clean_display_date)
+                with cm2:
+                    bestdistanceoppmi = bestdistanceopp * 92955807.3 / 1_000_000
                     if show_million_miles:
-                        dist_conjmi = dist_conjau * 92955807.3 / 1_000_000
-                        c3.metric("Maximum Distance", f"{dist_conjmi:.1f} M miles")
+                        st.metric("Distance", f"{bestdistanceoppmi:.2f} M miles")
                     else:
-                        c3.metric("Maximum Distance (AU)", f"{dist_conjau:.2f} AU")
-                    st.caption("A conjunction is the point at which the object is farthest from the Earth.")
-                else:
-                    st.info("Calculating alignment window...")
-                            
-            except Exception as a:
-                st.warning(f"Unable to stream ephemerides. Error: {a}")
+                        st.metric("Distance (AU)", f"{bestdistanceopp:.2f} AU")
+                with cm3:
+                    st.metric("Phase Angle", f"{fine_table['alpha'][exact_idx]:.2f}°")
+            else:
+                st.info("The calculated opposition window has already passed.")
         else:
-            pass
-
-
-
-        object_desc = OBJECT_DESCRIPTIONS.get(target_name, "Physical data unavailable.")
-        st.markdown(f"**Physical Profile:** {object_desc}")
-        st.caption("v1.2.0", False, text_alignment="right")
-        st.markdown("""
-        <style>
-        .block-container {
-            padding-top: 1rem;
-            padding-bottom: 0rem;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+            st.info("Rough_idx == none")
     except Exception as e:
-            st.error(f"Could not fetch data from NASA JPL. Error detail: {e}")
+        st.error(f"An error calculating opposition occured. Error: {e}")
+
+
+@st.cache_data(show_spinner = "Calculating...")
+def infconj(show_million_miles, obj_id, target_name, mylat, mylong):
+    if target_name not in ["Mercury", "Venus"]:
+        return
+    try:
+        st.markdown("---")
+        scandays = 450
+        start_time = Time.now()
+        stop_time = start_time + scandays * u.day
+        
+        # scan for target
+        target_scan = Horizons(
+            id=obj_id,
+            location={'lon': mylong, 'lat': mylat, 'elevation': 0},
+            epochs={'start': start_time.iso[:10], 'stop': stop_time.iso[:10], 'step': '1d'}
+        )
+        target_table = target_scan.ephemerides()
+
+        #scan for sun
+        sun_scan = Horizons(
+            id=10,
+            location={'lon': mylong, 'lat': mylat, 'elevation': 0},
+            epochs={'start': start_time.iso[:10], 'stop': stop_time.iso[:10], 'step': '1d'}
+        )
+
+        #get all required data
+        sun_table = sun_scan.ephemerides()
+        target_phaseang = np.array(target_table['alpha'])
+        target_ED = np.array(target_table['delta'])
+        target_ra = np.array(target_table['RA'])
+        target_dec = np.array(target_table['DEC'])
+        sun_ra = np.array(sun_table['RA'])
+        sun_dec = np.array(sun_table['DEC'])
+        juliandate = np.array(target_table['datetime_jd'])
+        target_ra_rad = np.radians(target_ra)
+        target_dec_rad = np.radians(target_dec)
+        sun_ra_rad = np.radians(sun_ra)
+        sun_dec_rad = np.radians(sun_dec)
+
+        # 2. Apply the spherical law of cosines formula
+        cos_separation = (np.sin(target_dec_rad) * np.sin(sun_dec_rad) + 
+                        np.cos(target_dec_rad) * np.cos(sun_dec_rad) * np.cos(target_ra_rad - sun_ra_rad))
+
+        # 3. Clip values to exactly [-1.0, 1.0] to prevent floating-point rounding crashes in arccos
+        cos_separation = np.clip(cos_separation, -1.0, 1.0)
+
+        # 4. Convert back to degrees to get the final separation array
+        apparent_angular_separation = np.degrees(np.arccos(cos_separation))
+
+        transit_idx = None
+
+        for j in range(1, len(apparent_angular_separation) - 1):
+            if (apparent_angular_separation[j] < apparent_angular_separation[j-1] and 
+                apparent_angular_separation[j] < apparent_angular_separation[j+1]):
+                
+                transit_date = Time(float(juliandate[j]), format='jd').datetime.replace(tzinfo=timezone.utc)
+                
+                if (transit_date - datetime.now(timezone.utc)).total_seconds() > 0:
+                    # Change your gate constraint to 7.0 to accommodate Venus's wide tilted passes
+                    if apparent_angular_separation[j] <= 7.0 and target_ED[j] < 1.0:
+                        transit_idx = j
+                        break
+
+        if transit_idx is not None:
+            st.header("Next Inferior Conjunction")
+            transit_date = transit_date + timedelta(hours=6)
+            good_display_date = transit_date.strftime("%Y-%b-%d")
+            best_phaseang = target_phaseang[transit_idx]
+            best_disttoearth = target_ED[transit_idx]
+            
+            cm1, cm2, cm3 = st.columns(3)
+            with cm1:
+                st.metric("Inferior Conjunction Date", good_display_date)
+            with cm2:
+                if show_million_miles:
+                     best_disttoearthmi = best_disttoearth * 92955807.3 / 1_000_000
+                     st.metric("Distance from Earth (AU)", f"{best_disttoearthmi:.2f} M miles")
+                else:
+                    st.metric("Distance from Earth (AU)", f"{best_disttoearth:.2f} AU")
+            with cm3:
+                st.metric("Phase Angle", f"{best_phaseang:.2f}°")
+        else:
+            st.info(f"No {target_name} inferior conjunction found in the next {scandays} days.")
+    except Exception as e:
+        st.error(f"A calculation error occured. Error: {e}")
+
+
+@st.cache_data(show_spinner="Fetching 1-Year Distance Projection...")
+def get_one_year_trajectory(obj_id):
+    try:
+        # Generate start date (Today) and stop date (1 Year from now)
+        start_time = Time.now()
+        end_time = start_time + TimeDelta(365, format='jd')
+        
+        # Format strings for the JPL API (YYYY-MM-DD format)
+        start_str = start_time.iso.split()[0]
+
+        end_str = end_time.iso.split()[0]
+        
+        # Query JPL Horizons using 1-day step intervals
+        trajectory_query = Horizons(
+            id=obj_id,
+            location='500',  # Geocentric (Earth Center view) is ideal for pure distance
+            epochs={'start': start_str, 'stop': end_str, 'step': '1d'}
+        )
+        
+        table = trajectory_query.ephemerides()
+        df = table.to_pandas()
+        
+        # Format the dataframe cleanly for plotting
+        df['Date'] = pd.to_datetime(df['datetime_str'])
+        # Extract 'delta' (Distance to Earth) and 'r' (Distance to Sun)
+        df_clean = df[['Date', 'V']].copy()
+        
+        return {"status": "success", "data": df_clean}
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# --- 2. LAYOUT RENDERING FUNCTION ---
+def display_distance_chart(obj_id, target_name):
+    st.markdown("---")
+    st.header(f"Apparent Magnitude Projection for {target_name}")
+    
+    # Trigger the cached calculation 
+    result = get_one_year_trajectory(obj_id)
+    
+    if result["status"] == "success":
+        df = result["data"].copy()
+        
+        # Handle unit conversion toggles cleanly based on user preference
+        df['Apparent Magnitude'] = df['V']
+        y_col = 'Apparent Magnitude'
+        y_label = "Apparent Magnitude (V)"
+            
+        # Create an interactive, fluid Plotly line chart
+        fig = px.line(
+            df,
+            x='Date',
+            y=y_col,
+            title=f"{target_name} Apparent Magnitude Timeline",
+            labels={y_col: y_label, 'Date': 'Date of Observation'},
+            color_discrete_sequence=["#FF4B4B"]  # Streamlit Red styling
+        )
+        
+        # Configure layout styling for deep space scannability
+        fig.update_layout(
+            hovermode="x unified",
+            dragmode=False,
+            margin=dict(l=40, r=40, t=40, b=40),
+            xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)', fixedrange=True),
+            yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)', fixedrange=True, autorange="reversed")
+        )
+        
+        # Render the interactive graphic inside your app frame
+        st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
+        
+    else:
+        st.error(f"Could not construct trajectory projection chart. Error: {result['message']}")
+
+def version():
+    st.caption("v1.3.0", text_alignment="right")
+
 
 render_live_dashboard()
+opposition(show_million_miles, obj_id, target_name)
+infconj(show_million_miles, obj_id, target_name, mylat, mylong)
+display_distance_chart(obj_id, target_name)
+version()
 
