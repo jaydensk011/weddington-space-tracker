@@ -3,6 +3,4 @@ astroquery
 astropy
 numpy
 pandas
-datetime
 plotly
-math
